@@ -4,8 +4,8 @@
   "description": "chess",
   "main": "build/index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "build": "rm -rf ./build && tsc",
+    "test": "jest --config=tests/jest.config.js",
+    "build": "rm -rf ./build && tsc --p ./configs/tsconfig.json",
     "start": "npm run build && node build/index.js"
   },
   "repository": {
