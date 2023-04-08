@@ -1,0 +1,24 @@
+{
+  "name": "nodejs-chess",
+  "version": "1.0.0",
+  "description": "chess",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/GDOR-11/nodejs-chess.git"
+  },
+  "keywords": [
+    "chess",
+    "nodejs",
+    "typescript"
+  ],
+  "author": "Gabriel Delai Onzi Ramalho",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/GDOR-11/nodejs-chess/issues"
+  },
+  "homepage": "https://github.com/GDOR-11/nodejs-chess#readme"
+}
