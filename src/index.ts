@@ -1,14 +1,13 @@
 import http from "http";
 import querystring from "querystring";
-import {RequestListener} from "./utils/requestListenerUtils";
+import {RequestListener, fileRequestListener, EJSfileRequestListener} from "./RequestListener.js";
 
 const requestListeners: {[req: string]: RequestListener} = {
-    "GET /": (request, response, query) => {
-        response.end(`you are currently seeing the main page, with query ${JSON.stringify(query)}`);
-    },
+    "GET /": EJSfileRequestListener("./public/index.ejs"),
     "GET /play": (request, response, query) => {
         response.end(`you want to start a match, with query ${JSON.stringify(query)}`);
-    }
+    },
+    "GET /index.js": fileRequestListener("./public/index.js")
 };
 
 const server = http.createServer((request, response) => {
