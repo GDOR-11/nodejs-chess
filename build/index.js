@@ -1,12 +1,11 @@
 import http from "http";
 import querystring from "querystring";
-import { fileRequestListener, EJSfileRequestListener } from "./RequestListener.js";
+import { EJSfileRequestListener } from "./RequestListener.js";
 const requestListeners = {
     "GET /": EJSfileRequestListener("./public/index.ejs"),
     "GET /play": (request, response, query) => {
         response.end(`you want to start a match, with query ${JSON.stringify(query)}`);
-    },
-    "GET /index.js": fileRequestListener("./public/index.js")
+    }
 };
 const server = http.createServer((request, response) => {
     const [url, query_str] = (request.url + "?").split("?");

@@ -4,10 +4,7 @@ import {RequestListener, fileRequestListener, EJSfileRequestListener} from "./Re
 
 const requestListeners: {[req: string]: RequestListener} = {
     "GET /": EJSfileRequestListener("./public/index.ejs"),
-    "GET /play": (request, response, query) => {
-        response.end(`you want to start a match, with query ${JSON.stringify(query)}`);
-    },
-    "GET /index.js": fileRequestListener("./public/index.js")
+    "GET /play": EJSfileRequestListener("./public/play.ejs")
 };
 
 const server = http.createServer((request, response) => {
