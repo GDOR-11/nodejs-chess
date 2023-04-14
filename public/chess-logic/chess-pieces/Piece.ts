@@ -8,19 +8,29 @@ export enum PieceEvent {
     Taken,
     Promoted
 }
+export enum PieceColor {
+    White = "white",
+    Black = "black"
+}
+
 
 export default abstract class Piece {
     readonly character: string;
+    side: PieceColor;
     taken: boolean = false;
     position: Coordinate;
     private listeners: ((event: PieceEvent, data: Object) => void)[] = [];
     private static globalListeners: ((event: PieceEvent, piece: Piece, data: Object) => void)[] = [];
 
-    constructor(pos: Coordinate) {
+    constructor(pos: Coordinate, size: PieceColor) {
         this.position = pos;
     }
 
     getValidMoves(board: ChessBoard): Move[] {
+        throw Error("getValidMoves has not been implemented in a class that extends Piece");
+    }
+
+    couldGetTo(position: Coordinate): boolean {
         throw Error("getValidMoves has not been implemented in a class that extends Piece");
     }
 

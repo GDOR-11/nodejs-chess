@@ -12,6 +12,9 @@ export default class Coordinate {
     toString(): string {
         return String.fromCharCode(this.row + 97) + this.column;
     }
+    static fromString(str: string): Coordinate {
+        return new Coordinate(str.charCodeAt(0) - 97, +str.slice(1) - 1);
+    }
 
     //#region getters & setters
     /** 0-indexed */
