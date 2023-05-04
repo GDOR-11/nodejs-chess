@@ -5,8 +5,8 @@
   "main": "build/index.js",
   "type": "module",
   "scripts": {
-    "test": "jest --config=tests/jest.config.js",
-    "build": "rm -rf ./build && tsc --p ./configs/tsconfig.json",
+    "test": "jest --config=tests/jest.config.cjs",
+    "build": "rm -rf ./build && tsc --p ./configs/tsconfig-server.json && rm -rf ./client/scrpits && tsc --p ./configs/tsconfig-client.json",
     "start": "npm run build && node build/index.js"
   },
   "repository": {
