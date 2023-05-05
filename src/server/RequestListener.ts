@@ -18,7 +18,7 @@ mime.lookup = (() => {
     };
 })();
 
-export function fileRequestListener(filepath: string, mimeType?: string): RequestListener {
+export function fileRequestListener(filepath: string, mimeType?: string, EJS: boolean = filepath.endsWith(".ejs")): RequestListener {
     // if mime type was not given, look it up
     if(mimeType === undefined) {
         let tmp_mimeType = mime.lookup(filepath);
@@ -28,52 +28,80 @@ export function fileRequestListener(filepath: string, mimeType?: string): Reques
             mimeType = tmp_mimeType;
         }
     }
+
+    /** stores the requests that have been made while the file has not been read yet */
+    let pendingRequests: Parameters<RequestListener>[] = [];
     
+    /** undefined if the file has not been read yet, a string otherwise */
+    let filedata: string | undefined = undefined;
+
+
     // read the file beforehand
-    let responseData: string | undefined = undefined;
     fs.readFile(filepath, "utf8").then(data => {
-        responseData = data;
+        filedata = data;
+
+        // respond to the pending requests
+        while(pendingRequests.length > 0) {
+            let pendingRequest = pendingRequests[pendingRequests.length - 1];
+            requestListener(pendingRequest[0], pendingRequest[1]);
+            pendingRequests.length--;
+        }
     }).catch(error => {
         throw error;
     });
 
-    // return request listener
+    let requestListener: RequestListener = (request, response) => {
+        // send content
+        response.setHeader("content-type", mimeType as string);
+        response.statusCode = 200;
+        response.end(filedata);
+    }
+
     return (request, response) => {
-        // if the file has not been read yet, send 503 failure response
-        if(responseData === undefined) {
-            response.setHeader("content-type", "text/html");
-            response.statusCode = 503;
-            response.end("<h1>503 lol<h1>");
+        if(filedata === undefined) {
+            // if the file has not been read yet, push this request to the pending requests so it can be resolved later
+            pendingRequests.push([request, response]);
         } else {
-            // send content
-            response.setHeader("content-type", mimeType as string);
-            response.statusCode = 200;
-            response.end(responseData);
+            // otherwise, just resolve the request
+            requestListener(request, response);
         }
     }
 }
 
 export function EJSfileRequestListener(filepath: string, EJSdata?: ejs.Data, EJSoptions?: ejs.Options): RequestListener {
-    // read and process the given file
-    let responseData: string | undefined = undefined;
+
+    /** stores the requests that have been made while the file has not been read yet */
+    let pendingRequests: Parameters<RequestListener>[] = [];
+
+    // read and process the given file beforehand
+    let filedata: string | undefined = undefined;
     ejs.renderFile(filepath, EJSdata, EJSoptions).then(data => {
-        responseData = data;
+        filedata = data;
+
+        // respond to the pending requests
+        while(pendingRequests.length > 0) {
+            let pendingRequest = pendingRequests[pendingRequests.length - 1];
+            requestListener(pendingRequest[0], pendingRequest[1]);
+            pendingRequests.length--;
+        }
     }).catch(error => {
         throw error;
     });
 
-    // return request listener
-    return (request, response) => {
+    let requestListener: RequestListener = (request, response) => {
+        // send content
+        response.statusCode = 200;
         response.setHeader("content-type", "text/html");
-        
-        // if the file has not been processed yet, send 503 failure response
-        if(responseData === undefined) {
-            response.statusCode = 503;
-            response.end("<h1>503 lol<h1>");
+        response.end(filedata);
+    }
+
+    return (request, response) => {
+        if(filedata === undefined) {
+            // if the file has not been read yet, push this request to the pending requests so it can be resolved later
+            pendingRequests.push([request, response]);
         } else {
-            // send content
-            response.statusCode = 200;
-            response.end(responseData);
+            // otherwise, just resolve the request
+            requestListener(request, response);
         }
     }
 }
@@ -151,12 +179,14 @@ function renderAllEJSfiles(files: {filename: string, filedata: string}[], render
  * @returns the request listener
  */
 export function directoryRequestListener(dirpath: string = "./", baseUrl: string = "", renderEJSfiles: boolean = true): RequestListener {
-    let requestListeners = {};
+
+    /** undefined if the files have not been read yet. An object of the files otherwise */
     let files: undefined | {[filename: string]: {filedata: string, mimetype: string}} = undefined;
 
     /** stores the requests that have been made while the files have not been read yet */
-    let pendingRequests: [IncomingMessage, ServerResponse][] = [];
+    let pendingRequests: Parameters<RequestListener>[] = [];
 
+    // read the files beforehand
     readAllFilesInDirectory(dirpath, false).then(_files => {
         if(renderEJSfiles) {
             renderAllEJSfiles(_files);
@@ -167,6 +197,7 @@ export function directoryRequestListener(dirpath: string = "./", baseUrl: string
             files[file.filename] = {filedata: file.filedata, mimetype: file.mimetype};
         }
 
+        // respond to the pending requests
         while(pendingRequests.length > 0) {
             let pendingRequest = pendingRequests[pendingRequests.length - 1];
             requestListener(pendingRequest[0], pendingRequest[1]);
@@ -198,9 +229,11 @@ export function directoryRequestListener(dirpath: string = "./", baseUrl: string
 
     return (request, response) => {
         if(files === undefined) {
+            // if the file has not been read yet, push this request to the pending requests so it can be resolved later
             pendingRequests.push([request, response]);
         } else {
+            // otherwise, just resolve the request
             requestListener(request, response);
         }
-    };
+    }
 }
