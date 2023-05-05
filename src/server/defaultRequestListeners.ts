@@ -5,7 +5,6 @@ import mime from "mime-types";
 import path from "path";
 
 import {sendUnsuccessfulResponse} from "./defaultResponses.js";
-import { send } from "process";
 
 const extraMimetypes: {[ext: string]: string} = {
     ".ejs": "text/html"
