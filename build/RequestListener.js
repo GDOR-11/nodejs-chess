@@ -22,7 +22,7 @@ mime.lookup = (() => {
         return (_a = extraMimetypes[extension]) !== null && _a !== void 0 ? _a : mime_lookup(extension);
     };
 })();
-export function fileRequestListener(filepath, mimeType) {
+export function fileRequestListener(filepath, mimeType, EJS = filepath.endsWith(".ejs")) {
     // if mime type was not given, look it up
     if (mimeType === undefined) {
         let tmp_mimeType = mime.lookup(filepath);
@@ -33,49 +33,69 @@ export function fileRequestListener(filepath, mimeType) {
             mimeType = tmp_mimeType;
         }
     }
+    /** stores the requests that have been made while the file has not been read yet */
+    let pendingRequests = [];
+    /** undefined if the file has not been read yet, a string otherwise */
+    let filedata = undefined;
     // read the file beforehand
-    let responseData = undefined;
     fs.readFile(filepath, "utf8").then(data => {
-        responseData = data;
+        filedata = data;
+        // respond to the pending requests
+        while (pendingRequests.length > 0) {
+            let pendingRequest = pendingRequests[pendingRequests.length - 1];
+            requestListener(pendingRequest[0], pendingRequest[1]);
+            pendingRequests.length--;
+        }
     }).catch(error => {
         throw error;
     });
-    // return request listener
+    let requestListener = (request, response) => {
+        // send content
+        response.setHeader("content-type", mimeType);
+        response.statusCode = 200;
+        response.end(filedata);
+    };
     return (request, response) => {
-        // if the file has not been read yet, send 503 failure response
-        if (responseData === undefined) {
-            response.setHeader("content-type", "text/html");
-            response.statusCode = 503;
-            response.end("<h1>503 lol<h1>");
+        if (filedata === undefined) {
+            // if the file has not been read yet, push this request to the pending requests so it can be resolved later
+            pendingRequests.push([request, response]);
         }
         else {
-            // send content
-            response.setHeader("content-type", mimeType);
-            response.statusCode = 200;
-            response.end(responseData);
+            // otherwise, just resolve the request
+            requestListener(request, response);
         }
     };
 }
 export function EJSfileRequestListener(filepath, EJSdata, EJSoptions) {
-    // read and process the given file
-    let responseData = undefined;
+    /** stores the requests that have been made while the file has not been read yet */
+    let pendingRequests = [];
+    // read and process the given file beforehand
+    let filedata = undefined;
     ejs.renderFile(filepath, EJSdata, EJSoptions).then(data => {
-        responseData = data;
+        filedata = data;
+        // respond to the pending requests
+        while (pendingRequests.length > 0) {
+            let pendingRequest = pendingRequests[pendingRequests.length - 1];
+            requestListener(pendingRequest[0], pendingRequest[1]);
+            pendingRequests.length--;
+        }
     }).catch(error => {
         throw error;
     });
-    // return request listener
-    return (request, response) => {
+    let requestListener = (request, response) => {
+        // send content
+        response.statusCode = 200;
         response.setHeader("content-type", "text/html");
-        // if the file has not been processed yet, send 503 failure response
-        if (responseData === undefined) {
-            response.statusCode = 503;
-            response.end("<h1>503 lol<h1>");
+        response.end(filedata);
+    };
+    return (request, response) => {
+        if (filedata === undefined) {
+            // if the file has not been read yet, push this request to the pending requests so it can be resolved later
+            pendingRequests.push([request, response]);
         }
         else {
-            // send content
-            response.statusCode = 200;
-            response.end(responseData);
+            // otherwise, just resolve the request
+            requestListener(request, response);
         }
     };
 }
@@ -152,10 +172,11 @@ function renderAllEJSfiles(files, render = [], ignore = []) {
  * @returns the request listener
  */
 export function directoryRequestListener(dirpath = "./", baseUrl = "", renderEJSfiles = true) {
-    let requestListeners = {};
+    /** undefined if the files have not been read yet. An object of the files otherwise */
     let files = undefined;
     /** stores the requests that have been made while the files have not been read yet */
     let pendingRequests = [];
+    // read the files beforehand
     readAllFilesInDirectory(dirpath, false).then(_files => {
         if (renderEJSfiles) {
             renderAllEJSfiles(_files);
@@ -164,6 +185,7 @@ export function directoryRequestListener(dirpath = "./", baseUrl = "", renderEJS
         for (let file of _files) {
             files[file.filename] = { filedata: file.filedata, mimetype: file.mimetype };
         }
+        // respond to the pending requests
         while (pendingRequests.length > 0) {
             let pendingRequest = pendingRequests[pendingRequests.length - 1];
             requestListener(pendingRequest[0], pendingRequest[1]);
@@ -191,9 +213,11 @@ export function directoryRequestListener(dirpath = "./", baseUrl = "", renderEJS
     };
     return (request, response) => {
         if (files === undefined) {
+            // if the file has not been read yet, push this request to the pending requests so it can be resolved later
             pendingRequests.push([request, response]);
         }
         else {
+            // otherwise, just resolve the request
             requestListener(request, response);
         }
     };
