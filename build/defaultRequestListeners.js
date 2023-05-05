@@ -11,6 +11,7 @@ import fs from "fs/promises";
 import ejs from "ejs";
 import mime from "mime-types";
 import path from "path";
+import { sendUnsuccessfulResponse } from "./defaultResponses.js";
 const extraMimetypes = {
     ".ejs": "text/html"
 };
@@ -38,7 +39,7 @@ export function fileRequestListener(filepath, mimeType, EJS = filepath.endsWith(
     /** undefined if the file has not been read yet, a string otherwise */
     let filedata = undefined;
     // read the file beforehand
-    fs.readFile(filepath, "utf8").then(data => {
+    fs.readFile(filepath).then(data => {
         filedata = data;
         // respond to the pending requests
         while (pendingRequests.length > 0) {
@@ -51,8 +52,8 @@ export function fileRequestListener(filepath, mimeType, EJS = filepath.endsWith(
     });
     let requestListener = (request, response) => {
         // send content
-        response.setHeader("content-type", mimeType);
         response.statusCode = 200;
+        response.setHeader("content-type", mimeType);
         response.end(filedata);
     };
     return (request, response) => {
@@ -99,6 +100,7 @@ export function EJSfileRequestListener(filepath, EJSdata, EJSoptions) {
         }
     };
 }
+//#region directoryRequestListener functions
 /**
  * returns the paths of all of the files in the given directory. Basically fs.readdir, but recursive.
  * @param dirpath the directory to read the files from
@@ -122,7 +124,7 @@ function readdirRecursive(dirpath) {
     });
 }
 /**
- * returns the contents of all of the files in the given directory
+ * returns the contents of all of the files in the given directory. Ignores the files that mime.lookup can't find
  * @param dirpath the directory to read
  * @param includeDirpath wether the path to the directory should be included ot not in the filenames
  * @returns all the files of the directory
@@ -132,6 +134,10 @@ function readAllFilesInDirectory(dirpath, includeDirpath = true) {
         let files = [];
         let filepaths = yield readdirRecursive(dirpath);
         for (let filepath of filepaths) {
+            let mimetype = mime.lookup(filepath.slice(filepath.lastIndexOf(".")));
+            if (mimetype === false) {
+                continue;
+            }
             let filename = filepath;
             if (!includeDirpath) {
                 let dirpathLengthError = 0; // if dirpath starts with "./" or ends with "/", use this as a factor to adjust its length
@@ -141,26 +147,30 @@ function readAllFilesInDirectory(dirpath, includeDirpath = true) {
             }
             files.push({
                 filename,
-                filedata: yield fs.readFile(filepath, { encoding: "utf-8" }),
-                mimetype: mime.lookup(filepath.slice(filepath.lastIndexOf("."))) || (() => { throw Error("Unknown extension."); })()
+                filedata: yield fs.readFile(filepath),
+                mimetype
             });
         }
         return files;
     });
 }
 /**
- * renders all the EJS files of the given files, and keeps the rest untouched
+ * renders all the EJS files of the given files, and keeps the rest untouched. If ejs fails to render the file, it is deleted from the object as it probably requires aditional parameters
  * @param files the files to process
  * @param render the files that should be rendered no matter their extension (.ejs or not)
  * @param ignore the files that should not be rendered no matter their extension (.ejs or not)
  */
-function renderAllEJSfiles(files, render = [], ignore = []) {
+function renderAllEJSfiles(files) {
     for (let i = 0; i < files.length; i++) {
         let { filename, filedata } = files[i];
         if (filename.endsWith(".ejs")) {
-            // remove the extension and render the EJS file
-            files[i].filename = filename.split(".")[0];
-            files[i].filedata = ejs.render(filedata);
+            try {
+                files[i].filedata = Buffer.from(ejs.render(filedata.toString("utf-8")));
+                files[i].filename = filename.split(".")[0];
+            }
+            catch (error) {
+                files.splice(i, 1);
+            }
         }
     }
 }
@@ -201,11 +211,8 @@ export function directoryRequestListener(dirpath = "./", baseUrl = "", renderEJS
         let questionMarkIdx = url.indexOf("?");
         let filepath = url.substring(baseUrl.length, questionMarkIdx == -1 ? url.length : questionMarkIdx);
         let file = files[filepath];
-        if (file === undefined) {
-            response.statusCode = 404;
-            response.setHeader("content-type", "text/html");
-            response.end("this page does not exist, stop messing around foolish hooman");
-            return;
+        if (file == undefined) {
+            return sendUnsuccessfulResponse(response, 404, "Page not found.", "This page does not exist yet. If you think this is a mistake, I don't care at all. Now get the hell outta here.");
         }
         response.statusCode = 200;
         response.setHeader("content-type", file.mimetype);
@@ -222,3 +229,4 @@ export function directoryRequestListener(dirpath = "./", baseUrl = "", renderEJS
         }
     };
 }
+//#endregion

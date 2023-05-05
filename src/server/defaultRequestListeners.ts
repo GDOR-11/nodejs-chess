@@ -1,11 +1,11 @@
-import {IncomingMessage, ServerResponse} from "http";
-import {ParsedUrlQuery} from "querystring";
 import {RequestListener} from "http";
-
 import fs from "fs/promises";
 import ejs from "ejs";
 import mime from "mime-types";
 import path from "path";
+
+import {sendUnsuccessfulResponse} from "./defaultResponses.js";
+import { send } from "process";
 
 const extraMimetypes: {[ext: string]: string} = {
     ".ejs": "text/html"
@@ -33,11 +33,11 @@ export function fileRequestListener(filepath: string, mimeType?: string, EJS: bo
     let pendingRequests: Parameters<RequestListener>[] = [];
     
     /** undefined if the file has not been read yet, a string otherwise */
-    let filedata: string | undefined = undefined;
+    let filedata: Buffer | undefined = undefined;
 
 
     // read the file beforehand
-    fs.readFile(filepath, "utf8").then(data => {
+    fs.readFile(filepath).then(data => {
         filedata = data;
 
         // respond to the pending requests
@@ -52,8 +52,8 @@ export function fileRequestListener(filepath: string, mimeType?: string, EJS: bo
 
     let requestListener: RequestListener = (request, response) => {
         // send content
-        response.setHeader("content-type", mimeType as string);
         response.statusCode = 200;
+        response.setHeader("content-type", mimeType as string);
         response.end(filedata);
     }
 
@@ -106,6 +106,8 @@ export function EJSfileRequestListener(filepath: string, EJSdata?: ejs.Data, EJS
     }
 }
 
+//#region directoryRequestListener functions
+
 /**
  * returns the paths of all of the files in the given directory. Basically fs.readdir, but recursive.
  * @param dirpath the directory to read the files from
@@ -126,17 +128,21 @@ async function readdirRecursive(dirpath: string): Promise<string[]> {
     return fileapths;
 }
 
-
 /**
- * returns the contents of all of the files in the given directory
+ * returns the contents of all of the files in the given directory. Ignores the files that mime.lookup can't find
  * @param dirpath the directory to read
  * @param includeDirpath wether the path to the directory should be included ot not in the filenames
  * @returns all the files of the directory
  */
-async function readAllFilesInDirectory(dirpath: string, includeDirpath: boolean = true): Promise<{filename: string, filedata: string, mimetype: string}[]> {
-    let files: {filename: string, filedata: string, mimetype: string}[] = [];
+async function readAllFilesInDirectory(dirpath: string, includeDirpath: boolean = true): Promise<{filename: string, filedata: Buffer, mimetype: string}[]> {
+    let files: {filename: string, filedata: Buffer, mimetype: string}[] = [];
     let filepaths = await readdirRecursive(dirpath);
     for(let filepath of filepaths) {
+        let mimetype = mime.lookup(filepath.slice(filepath.lastIndexOf(".")));
+        if(mimetype === false) {
+            continue;
+        }
+
         let filename = filepath;
         if(!includeDirpath) {
             let dirpathLengthError = 0; // if dirpath starts with "./" or ends with "/", use this as a factor to adjust its length
@@ -146,26 +152,29 @@ async function readAllFilesInDirectory(dirpath: string, includeDirpath: boolean 
         }
         files.push({
             filename,
-            filedata: await fs.readFile(filepath, {encoding: "utf-8"}),
-            mimetype: mime.lookup(filepath.slice(filepath.lastIndexOf("."))) || (() => { throw Error("Unknown extension."); })()
+            filedata: await fs.readFile(filepath),
+            mimetype
         });
     }
     return files;
 }
 
 /**
- * renders all the EJS files of the given files, and keeps the rest untouched
+ * renders all the EJS files of the given files, and keeps the rest untouched. If ejs fails to render the file, it is deleted from the object as it probably requires aditional parameters
  * @param files the files to process
  * @param render the files that should be rendered no matter their extension (.ejs or not)
  * @param ignore the files that should not be rendered no matter their extension (.ejs or not)
  */
-function renderAllEJSfiles(files: {filename: string, filedata: string}[], render: string[] = [], ignore: string[] = []) {
+function renderAllEJSfiles(files: {filename: string, filedata: Buffer}[]) {
     for(let i = 0;i < files.length;i++) {
         let {filename, filedata} = files[i];
         if(filename.endsWith(".ejs")) {
-            // remove the extension and render the EJS file
-            files[i].filename = filename.split(".")[0];
-            files[i].filedata = ejs.render(filedata);
+            try {
+                files[i].filedata = Buffer.from(ejs.render(filedata.toString("utf-8")));
+                files[i].filename = filename.split(".")[0];
+            } catch(error) {
+                files.splice(i, 1);
+            }
         }
     }
 }
@@ -181,7 +190,7 @@ function renderAllEJSfiles(files: {filename: string, filedata: string}[], render
 export function directoryRequestListener(dirpath: string = "./", baseUrl: string = "", renderEJSfiles: boolean = true): RequestListener {
 
     /** undefined if the files have not been read yet. An object of the files otherwise */
-    let files: undefined | {[filename: string]: {filedata: string, mimetype: string}} = undefined;
+    let files: undefined | {[filename: string]: {filedata: Buffer, mimetype: string}} = undefined;
 
     /** stores the requests that have been made while the files have not been read yet */
     let pendingRequests: Parameters<RequestListener>[] = [];
@@ -215,11 +224,8 @@ export function directoryRequestListener(dirpath: string = "./", baseUrl: string
         let filepath = url.substring(baseUrl.length, questionMarkIdx == -1 ? url.length : questionMarkIdx);
         let file = files[filepath];
 
-        if(file === undefined) {
-            response.statusCode = 404;
-            response.setHeader("content-type", "text/html");
-            response.end("this page does not exist, stop messing around foolish hooman");
-            return;
+        if(file == undefined) {
+            return sendUnsuccessfulResponse(response, 404, "Page not found.", "This page does not exist yet. If you think this is a mistake, I don't care at all. Now get the hell outta here.");
         }
 
         response.statusCode = 200;
@@ -237,3 +243,5 @@ export function directoryRequestListener(dirpath: string = "./", baseUrl: string
         }
     }
 }
+
+//#endregion

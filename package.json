@@ -6,8 +6,11 @@
   "type": "module",
   "scripts": {
     "test": "jest --config=tests/jest.config.cjs",
-    "build": "rm -rf ./build && tsc --p ./configs/tsconfig-server.json && rm -rf ./client/scrpits && tsc --p ./configs/tsconfig-client.json",
-    "start": "npm run build && node build/index.js"
+    "build-client": "rm -rf ./client/scrpits && tsc --p ./configs/tsconfig-client.json",
+    "build-server": "rm -rf ./build && tsc --p ./configs/tsconfig-server.json",
+    "build": "npm run build-client && npm run build-server",
+    "run": "node build/index.js",
+    "start": "npm run build && npm run run"
   },
   "repository": {
     "type": "git",
