@@ -1,8 +1,8 @@
 import http from "http";
 import querystring from "querystring";
-import {RequestListener, fileRequestListener, EJSfileRequestListener, directoryRequestListener} from "./RequestListener.js";
+import {fileRequestListener, EJSfileRequestListener, directoryRequestListener} from "./RequestListener.js";
 
-const requestListeners: {[req: string]: RequestListener} = {
+const requestListeners: {[req: string]: http.RequestListener} = {
     "GET /": EJSfileRequestListener("./client/index.ejs"),
     "GET /play": EJSfileRequestListener("./client/play.ejs")
 };
@@ -10,12 +10,10 @@ const requestListeners: {[req: string]: RequestListener} = {
 let reqlistener = directoryRequestListener("./client");
 
 const server = http.createServer((request, response) => {
-    const [url, query_str]: string[] = (request.url + "?").split("?");
-    const query = querystring.parse(query_str);
     
 
     //#region
-    reqlistener(request, response, query);
+    reqlistener(request, response);
     return;
     //#endregion
 

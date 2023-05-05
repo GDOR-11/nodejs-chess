@@ -1,5 +1,6 @@
 import {IncomingMessage, ServerResponse} from "http";
 import {ParsedUrlQuery} from "querystring";
+import {RequestListener} from "http";
 
 import fs from "fs/promises";
 import ejs from "ejs";
@@ -17,8 +18,6 @@ mime.lookup = (() => {
     };
 })();
 
-export type RequestListener = (request: IncomingMessage, response: ServerResponse, query: ParsedUrlQuery) => void;
-
 export function fileRequestListener(filepath: string, mimeType?: string): RequestListener {
     // if mime type was not given, look it up
     if(mimeType === undefined) {
@@ -29,7 +28,7 @@ export function fileRequestListener(filepath: string, mimeType?: string): Reques
             mimeType = tmp_mimeType;
         }
     }
-
+    
     // read the file beforehand
     let responseData: string | undefined = undefined;
     fs.readFile(filepath, "utf8").then(data => {
@@ -39,7 +38,7 @@ export function fileRequestListener(filepath: string, mimeType?: string): Reques
     });
 
     // return request listener
-    return (request, response, query) => {
+    return (request, response) => {
         // if the file has not been read yet, send 503 failure response
         if(responseData === undefined) {
             response.setHeader("content-type", "text/html");
@@ -64,7 +63,7 @@ export function EJSfileRequestListener(filepath: string, EJSdata?: ejs.Data, EJS
     });
 
     // return request listener
-    return (request, response, query) => {
+    return (request, response) => {
         response.setHeader("content-type", "text/html");
         
         // if the file has not been processed yet, send 503 failure response
@@ -135,7 +134,7 @@ async function readAllFilesInDirectory(dirpath: string, includeDirpath: boolean 
 function renderAllEJSfiles(files: {filename: string, filedata: string}[], render: string[] = [], ignore: string[] = []) {
     for(let i = 0;i < files.length;i++) {
         let {filename, filedata} = files[i];
-        if((filename.endsWith(".ejs") || render.includes(filename)) && !ignore.includes(filename)) {
+        if(filename.endsWith(".ejs")) {
             // remove the extension and render the EJS file
             files[i].filename = filename.split(".")[0];
             files[i].filedata = ejs.render(filedata);
@@ -144,8 +143,6 @@ function renderAllEJSfiles(files: {filename: string, filedata: string}[], render
 }
 
 
-// TODO: should directoryRequestListener take render and ignore as parameters, like renderAllEJSfiles?
-// TODO: my rational side says yes, my intuitive side says NO FOR THE LOVE OF GOD DONT
 /**
  * sets up a listener for a directory in your file hierarchy
  * @param dirpath the path to the directory to read from
@@ -158,7 +155,7 @@ export function directoryRequestListener(dirpath: string = "./", baseUrl: string
     let files: undefined | {[filename: string]: {filedata: string, mimetype: string}} = undefined;
 
     /** stores the requests that have been made while the files have not been read yet */
-    let pendingRequests: [IncomingMessage, ServerResponse, ParsedUrlQuery][] = [];
+    let pendingRequests: [IncomingMessage, ServerResponse][] = [];
 
     readAllFilesInDirectory(dirpath, false).then(_files => {
         if(renderEJSfiles) {
@@ -172,14 +169,14 @@ export function directoryRequestListener(dirpath: string = "./", baseUrl: string
 
         while(pendingRequests.length > 0) {
             let pendingRequest = pendingRequests[pendingRequests.length - 1];
-            requestListener(pendingRequest[0], pendingRequest[1], pendingRequest[2]);
+            requestListener(pendingRequest[0], pendingRequest[1]);
             pendingRequests.length--;
         }
     }).catch(error => {
         throw error;
     });
 
-    let requestListener: RequestListener = (request, response, query) => {
+    let requestListener: RequestListener = (request, response) => {
         if(files === undefined) throw Error("this function is only supposed to be called after the \"files\" variable has been assigned. find out what the hell is happening.");
 
         let url = request.url as string;
@@ -199,11 +196,11 @@ export function directoryRequestListener(dirpath: string = "./", baseUrl: string
         response.end(file.filedata);
     }
 
-    return (request, response, query) => {
+    return (request, response) => {
         if(files === undefined) {
-            pendingRequests.push([request, response, query]);
+            pendingRequests.push([request, response]);
         } else {
-            requestListener(request, response, query);
+            requestListener(request, response);
         }
     };
 }

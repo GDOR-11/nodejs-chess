@@ -1,16 +1,13 @@
 import http from "http";
-import querystring from "querystring";
 import { EJSfileRequestListener, directoryRequestListener } from "./RequestListener.js";
 const requestListeners = {
     "GET /": EJSfileRequestListener("./client/index.ejs"),
     "GET /play": EJSfileRequestListener("./client/play.ejs")
 };
-let reqlistener = directoryRequestListener("client");
+let reqlistener = directoryRequestListener("./client");
 const server = http.createServer((request, response) => {
-    const [url, query_str] = (request.url + "?").split("?");
-    const query = querystring.parse(query_str);
     //#region
-    reqlistener(request, response, query);
+    reqlistener(request, response);
     return;
     //#endregion
     response.statusCode = 404;

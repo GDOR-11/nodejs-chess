@@ -41,7 +41,7 @@ export function fileRequestListener(filepath, mimeType) {
         throw error;
     });
     // return request listener
-    return (request, response, query) => {
+    return (request, response) => {
         // if the file has not been read yet, send 503 failure response
         if (responseData === undefined) {
             response.setHeader("content-type", "text/html");
@@ -65,7 +65,7 @@ export function EJSfileRequestListener(filepath, EJSdata, EJSoptions) {
         throw error;
     });
     // return request listener
-    return (request, response, query) => {
+    return (request, response) => {
         response.setHeader("content-type", "text/html");
         // if the file has not been processed yet, send 503 failure response
         if (responseData === undefined) {
@@ -79,7 +79,11 @@ export function EJSfileRequestListener(filepath, EJSdata, EJSoptions) {
         }
     };
 }
-/** returns the paths of all of the files in the given directory */
+/**
+ * returns the paths of all of the files in the given directory. Basically fs.readdir, but recursive.
+ * @param dirpath the directory to read the files from
+ * @returns an array with the names of all the files of the folder
+ */
 function readdirRecursive(dirpath) {
     return __awaiter(this, void 0, void 0, function* () {
         let fileapths = [];
@@ -97,7 +101,12 @@ function readdirRecursive(dirpath) {
         return fileapths;
     });
 }
-/** returns the contents of all of the files in the given directory */
+/**
+ * returns the contents of all of the files in the given directory
+ * @param dirpath the directory to read
+ * @param includeDirpath wether the path to the directory should be included ot not in the filenames
+ * @returns all the files of the directory
+ */
 function readAllFilesInDirectory(dirpath, includeDirpath = true) {
     return __awaiter(this, void 0, void 0, function* () {
         let files = [];
@@ -119,42 +128,56 @@ function readAllFilesInDirectory(dirpath, includeDirpath = true) {
         return files;
     });
 }
-/** processes all the EJS files of the given files, and keeps the rest untouched */
-function processAllEJSfiles(files, EJSfiles = [], ignore = []) {
+/**
+ * renders all the EJS files of the given files, and keeps the rest untouched
+ * @param files the files to process
+ * @param render the files that should be rendered no matter their extension (.ejs or not)
+ * @param ignore the files that should not be rendered no matter their extension (.ejs or not)
+ */
+function renderAllEJSfiles(files, render = [], ignore = []) {
     for (let i = 0; i < files.length; i++) {
         let { filename, filedata } = files[i];
-        if ((filename.endsWith(".ejs") || EJSfiles.includes(filename)) && !ignore.includes(filename)) {
+        if (filename.endsWith(".ejs")) {
             // remove the extension and render the EJS file
             files[i].filename = filename.split(".")[0];
             files[i].filedata = ejs.render(filedata);
         }
     }
 }
-export function directoryRequestListener(dirpath = "./", baseUrl = "") {
+/**
+ * sets up a listener for a directory in your file hierarchy
+ * @param dirpath the path to the directory to read from
+ * @param baseUrl the base url (e.g. a base url "/users" means that the request with URL "/users/bots/noobmaster69/script.js" would access the file "/bots/noobmaster69/script.js", relative to dirpath)
+ * @param renderEJSfiles wether EJS files should be automatically rendered or not
+ * @returns the request listener
+ */
+export function directoryRequestListener(dirpath = "./", baseUrl = "", renderEJSfiles = true) {
     let requestListeners = {};
     let files = undefined;
     /** stores the requests that have been made while the files have not been read yet */
     let pendingRequests = [];
     readAllFilesInDirectory(dirpath, false).then(_files => {
-        processAllEJSfiles(_files);
+        if (renderEJSfiles) {
+            renderAllEJSfiles(_files);
+        }
         files = {};
         for (let file of _files) {
             files[file.filename] = { filedata: file.filedata, mimetype: file.mimetype };
         }
         while (pendingRequests.length > 0) {
             let pendingRequest = pendingRequests[pendingRequests.length - 1];
-            requestListener(pendingRequest[0], pendingRequest[1], pendingRequest[2]);
+            requestListener(pendingRequest[0], pendingRequest[1]);
             pendingRequests.length--;
         }
     }).catch(error => {
         throw error;
     });
-    let requestListener = (request, response, query) => {
+    let requestListener = (request, response) => {
         if (files === undefined)
             throw Error("this function is only supposed to be called after the \"files\" variable has been assigned. find out what the hell is happening.");
         let url = request.url;
-        let questionMark = url.indexOf("?");
-        let filepath = url.substring(baseUrl.length, questionMark == -1 ? url.length : questionMark);
+        let questionMarkIdx = url.indexOf("?");
+        let filepath = url.substring(baseUrl.length, questionMarkIdx == -1 ? url.length : questionMarkIdx);
         let file = files[filepath];
         if (file === undefined) {
             response.statusCode = 404;
@@ -166,12 +189,12 @@ export function directoryRequestListener(dirpath = "./", baseUrl = "") {
         response.setHeader("content-type", file.mimetype);
         response.end(file.filedata);
     };
-    return (request, response, query) => {
+    return (request, response) => {
         if (files === undefined) {
-            pendingRequests.push([request, response, query]);
+            pendingRequests.push([request, response]);
         }
         else {
-            requestListener(request, response, query);
+            requestListener(request, response);
         }
     };
 }
